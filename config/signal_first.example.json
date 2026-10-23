@@ -1,0 +1,49 @@
+{
+  "as_of": "2026-10-22",
+  "candidate_count": 100,
+  "selected_accounts": 50,
+  "max_signal_age_days": 365,
+  "recent_signal_days": 180,
+  "minimum_icp_score": 70,
+  "intent_definition": "Public business events suggesting potential shipping needs; no assertion of an active vendor evaluation",
+  "fit_weights": {
+    "geography": 20,
+    "parcel_relevance": 30,
+    "vertical": 20,
+    "scale_proxy": 20,
+    "integration_complexity": 10
+  },
+  "priority_weights": {
+    "icp": 0.7,
+    "signal": 0.3
+  },
+  "outreach_enabled": false,
+  "unattended_schedule_deployed": false,
+  "preferred_contacts": {},
+  "contact_aliases": {
+    "726111851": "galaxus.de",
+    "737116503": "durhambrands.com"
+  },
+  "verified_names": {
+    "825694103": {
+      "name": "Leslie Tang",
+      "source": "https://theindustry.beauty/the_directory/pureseoul/",
+      "receipt": "results/signal_first_v3/raw/contact-web-1.json"
+    },
+    "857858278": {
+      "name": "Reza Bafandeh",
+      "source": "https://www.darwynnfulfillment.com/darwynn-atlanta-georgia-fulfillment/",
+      "receipt": "results/signal_first_v3/raw/contact-public-final.json"
+    }
+  },
+  "rejected_contact_ids": [
+    "141805032",
+    "469107961",
+    "787521698"
+  ],
+  "rejected_contact_reasons": {
+    "141805032": "Historical COO; transition evidence dates to 2011",
+    "469107961": "Historical Kroger CEO; not eligible as a current buyer",
+    "787521698": "Public work history has an April 2026 end date; current status conflicts with provider"
+  }
+}

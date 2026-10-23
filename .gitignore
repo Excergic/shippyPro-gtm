@@ -1,0 +1,26 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+results/*.sqlite3*
+results/*.tar.gz
+
+# Local datasets, provider receipts, generated reports, backups and databases.
+results/
+archive/
+deepline/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+.DS_Store
+
+# Private research manifests and individually authored contact messaging.
+config/accounts.json
+config/reviewed_contacts.json
+config/event_reviews.json
+config/intent_reviews.json
+config/signal_first.json
+config/outbound/angles.tsv

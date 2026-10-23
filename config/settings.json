@@ -1,0 +1,53 @@
+{
+  "as_of": "2026-10-21",
+  "target_accounts": 100,
+  "qualified_accounts": 50,
+  "geographies": [
+    "Italy",
+    "France",
+    "United Kingdom",
+    "Spain",
+    "Germany"
+  ],
+  "source_mode": "connected_clay_and_web",
+  "signal_window_days": 365,
+  "recent_window_days": 180,
+  "score_weights": {
+    "icp_fit": 40,
+    "operating_complexity": 30,
+    "recent_events": 30
+  },
+  "suppressed_domains": [
+    "guess.com",
+    "longchamp.com",
+    "samsung.com",
+    "samsungsds.com",
+    "otb.net",
+    "diesel.com",
+    "macron.com",
+    "manifatturevalcismon.com",
+    "castelli-cycling.com",
+    "rossignol.com",
+    "teddy.it",
+    "terranovastyle.com",
+    "calzedonia.com",
+    "oniverse.it",
+    "photosi.com",
+    "venchi.com",
+    "sundek.com",
+    "patriziapepe.com",
+    "selleitalia.com",
+    "gorillasports.com",
+    "volcom.com",
+    "morellato.com",
+    "staffinternational.com"
+  ],
+  "contact_personas": [
+    "Logistics / Supply Chain budget owner",
+    "Ecommerce / Omnichannel business owner",
+    "COO / Operations owner",
+    "CIO / Technology implementation sponsor"
+  ],
+  "outreach_enabled": false,
+  "schedule_deployed": false
+}

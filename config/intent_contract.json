@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "as_of": "2026-10-21",
+  "target_researched_accounts": 100,
+  "target_qualified_accounts": 50,
+  "reference_window_days": 180,
+  "qualification_requires_all": [
+    "Named ICP company and canonical identity",
+    "Parcel-shipping software scope explicitly supported",
+    "Buyer-authored or officially attributable source fetched successfully",
+    "Explicit current vendor evaluation, replacement, open RFP, or active implementation project",
+    "Publication date and evidence that opportunity remains open as of reference date"
+  ],
+  "qualifying_classes": [
+    "open_rfp",
+    "explicit_vendor_evaluation",
+    "announced_replacement",
+    "active_named_shipping_software_implementation"
+  ],
+  "non_qualifying_classes": [
+    "generic_icp_fit",
+    "shipping_complexity",
+    "growth",
+    "warehouse_only",
+    "oms_wms_only",
+    "freight_tms_only",
+    "completed_rollout",
+    "supplier_case_study",
+    "undated_job",
+    "generic_software_skill_requirement",
+    "expired_tender",
+    "unverified_search_snippet",
+    "third_party_intent_without_shippypro_identity"
+  ],
+  "contact_gate": "Find contacts only for accounts that pass intent qualification; keep existing contacts separate until then.",
+  "intent_score_policy": "Qualified accounts receive evidence-strength and freshness scores; unqualified accounts receive 0 supported intent points, not a claim that they have no intent.",
+  "first_party_signals": "No ShippyPro-owned CRM, product telemetry, website analytics or trial activity was provided or accessed."
+}

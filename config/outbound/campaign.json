@@ -1,0 +1,16 @@
+{
+  "campaign_id":"shippypro-independent-audit-v1",
+  "name":"ShippyPro shipping signals — independent ghost audit",
+  "mode":"ghost_audit",
+  "sender":null,
+  "sending_enabled":false,
+  "official_demo_url":"https://sp.shippypro.com/en/request-demo",
+  "demo_link_type":"public ShippyPro form; not a connected calendar or audit-owned booking link",
+  "language":"English",
+  "sequence_business_day_offsets":[0,4,9,16],
+  "cadence_status":"proposed only; no activation or scheduled deliveries",
+  "primary_source":"results/signal_first_v3/selected_accounts.json",
+  "claim_policy":"Evidence first, operational questions second; no invented pain, savings, social proof, familiarity or authority.",
+  "transport":"none",
+  "research_as_of":"2026-10-22"
+}
