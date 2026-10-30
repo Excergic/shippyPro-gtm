@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "shippypro": {
+      "command": "python3",
+      "args": ["src/mcp_server.py"]
+    },
+    "shippypro-demo": {
+      "command": "python3",
+      "args": ["src/mcp_server.py", "--demo"]
+    }
+  }
+}

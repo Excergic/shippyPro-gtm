@@ -15,6 +15,11 @@ function start(){const ids=new Map();for(const id of ['initial','connection','me
  a=start();assert.equal(vm.runInContext('data.contacts[0].note',a.context),'Keep the real owner visible');assert.equal(vm.runInContext('data.contacts[0].review_status',a.context),'reviewed');assert.equal(vm.runInContext('data.contacts[0].messages[0].review_status',a.context),'reviewed');
  await vm.runInContext(`send({action:'edit_message',contact_id:${JSON.stringify(cid)},message_id:data.contacts[0].messages[0].id,subject:'Edited subject',body:data.contacts[0].messages[0].body,revision:data.contacts[0].messages[0].revision})`,a.context);
  a=start();assert.equal(vm.runInContext('data.contacts[0].messages[0].subject',a.context),'Edited subject');assert.equal(vm.runInContext('data.contacts[0].review_status',a.context),'unreviewed');assert.equal(vm.runInContext('data.summary.sent',a.context),0);
- a.ids.get('current_csv').onclick();assert.ok((await downloaded.text()).includes('Edited subject'));a.ids.get('backup').onclick();assert.ok((await downloaded.text()).includes('Keep the real owner visible'));
+ vm.runInContext("channel='email'",a.context);a.ids.get('current_csv').onclick();assert.ok((await downloaded.text()).includes('Edited subject'));
+ await vm.runInContext(`send({action:'edit_linkedin',contact_id:${JSON.stringify(cid)},message_id:data.contacts[0].linkedin_messages[0].id,subject:data.contacts[0].linkedin_messages[0].subject,body:'Hi Scott, REFY and its European rollout caught my eye. Open to connecting?',revision:data.contacts[0].linkedin_messages[0].revision})`,a.context);
+ a=start();assert.ok(vm.runInContext('data.contacts[0].linkedin_messages[0].body',a.context).includes('Open to connecting?'));
+ assert.equal(vm.runInContext('data.contacts[0].messages[0].subject',a.context),'Edited subject');
+ a.ids.get('current_csv').onclick();assert.ok((await downloaded.text()).includes('European rollout'));
+ a.ids.get('backup').onclick();const backup=await downloaded.text();assert.ok(backup.includes('Keep the real owner visible'));assert.ok(backup.includes('linkedin_messages'));
  a.ids.get('search').value='Quince';a.ids.get('search').oninput();assert.equal(a.ids.get('list').children.length,1);
  console.log('Dashboard storage, review, edit, reload, search and export checks passed.');})().catch(e=>{console.error(e);process.exitCode=1});

@@ -24,3 +24,7 @@ config/event_reviews.json
 config/intent_reviews.json
 config/signal_first.json
 config/outbound/angles.tsv
+config/outbound/linkedin_hooks.json
+
+# Server-generated API and webhook credentials.
+.runtime.env

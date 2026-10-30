@@ -8,6 +8,8 @@ from urllib.parse import urlsplit
 ROOT=Path(__file__).resolve().parents[1];OUT=ROOT/'results/outbound_v1';DB=OUT/'campaign.sqlite3';CFG=ROOT/'config/outbound/campaign.json'
 sys.path.insert(0,str(ROOT/'src'))
 from icp_pipeline import parse_sources
+import linkedin_copy
+import buying_committee
 
 def now():return datetime.now(timezone.utc).isoformat()
 def read(p):return json.loads(p.read_text())
@@ -24,7 +26,9 @@ def init(c):
  CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,contact_id TEXT NOT NULL REFERENCES contacts(id),step INTEGER NOT NULL,day_offset INTEGER NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,evidence_json TEXT NOT NULL,content_hash TEXT NOT NULL,review_status TEXT NOT NULL DEFAULT 'draft',edited INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(contact_id,step));
  CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY,operation_hash TEXT NOT NULL,created_at TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,contact_id TEXT NOT NULL REFERENCES contacts(id),message_id TEXT REFERENCES messages(id),type TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
- ''');c.commit()
+ ''')
+ if 'linkedin_json' not in {r[1] for r in c.execute('PRAGMA table_info(contacts)')}:c.execute("ALTER TABLE contacts ADD COLUMN linkedin_json TEXT NOT NULL DEFAULT '[]'")
+ c.commit()
 
 def web_sources(file):
  if not file.exists():return []
@@ -79,16 +83,16 @@ def research(r,a):
  return {'research_status':'public_business_context_found' if relevant else 'provider_context_only_after_public_search','researched_at':read(CFG)['research_as_of'],'observed_company_event':r['signal'],'event_date':r['event_date'],'company_source':r['source_url'],'company_receipt':r['receipt'],'person_public_fact':a['personal_fact'],'person_fact_status':'source-grounded business summary' if relevant else 'provider-reported; public corroboration unresolved','person_sources':relevant[:4],'search_receipt':str(f.relative_to(ROOT)),'reported_role':r['job_title'],'persona_hypothesis':a['persona'],'need_hypothesis':a['question'],'hypothesis_status':'untested; no internal pain, budget or vendor evaluation established','suggested_diagnostic':a['diagnostic'],'proposed_measure':a['metric'],'product_capability_source':FEATURES[a['feature']]['url'],'review_flags':flags,'signal_caveat':r['signal_caveat'],'email_status':r['email_status'],'email_domain_status':r.get('email_domain_status','no_email')}
 
 def drafts(r,a,cfg):
- name=a['greeting'];feature=FEATURES[a['feature']];diagnostic=a['diagnostic'][0].upper()+a['diagnostic'][1:]
+ role=buying_committee.describe(r.get('job_title'));name=a['greeting'];feature=FEATURES[a['feature']];diagnostic=a['diagnostic'][0].upper()+a['diagnostic'][1:]
  bodies=[
  f"Hi {name},\n\n{a['opener']}\n\n{a['question']}\n\n{feature['claim']} A useful starting point could be to {a['diagnostic']}.\n\nWould that be a relevant scenario to explore in a ShippyPro demo?",
- f"Hi {name},\n\nOne practical way to make the question concrete: {a['diagnostic']}.\n\nThe useful measure would be {a['metric']}. That gives your team a specific check before considering any change.\n\nIs that already covered in {r['company']}'s current setup?",
- f"Hi {name},\n\nFor {r['company']}, a focused ShippyPro demo could examine {feature['scenario']}, using the scenario above as the starting point.\n\nThe useful check is whether the workflow fits the systems and carriers already in place. {a['question']}\n\nIf useful, ShippyPro's public demo request form is here:\n{cfg['official_demo_url']}",
+ f"Hi {name},\n\nOne practical way to make the question concrete: {a['diagnostic']}.\n\nThe useful measure would be {a['metric']}. {role['touch_2']}\n\nIs that already covered in {r['company']}'s current setup?",
+ f"Hi {name},\n\nFor {r['company']}, a focused ShippyPro demo could examine {feature['scenario']}, using the scenario above as the starting point.\n\n{role['touch_3']} {a['question']}\n\nIf useful, ShippyPro's public demo request form is here:\n{cfg['official_demo_url']}",
  f"Hi {name},\n\nClosing the loop on {r['company']}'s shipping workflow. The question I would leave with your team is: {a['question'][0].lower()+a['question'][1:]}\n\nIf the current setup already handles that well, there may be nothing to change. If it is worth examining, the ShippyPro demo form in the previous note is the next step.\n\nOtherwise, happy to leave it here."
  ]
  subjects=[a['subject'],'A practical check for '+r['company'],'A focused shipping scenario','Closing the loop']
  evid=[r['source_url'],feature['url'],r['linkedin']]
- return [dict(step=i+1,day_offset=cfg['sequence_business_day_offsets'][i],subject=subjects[i],body=b,evidence=evid,core_value_proposition=feature['scenario'],message_kind='proposed_shippypro_campaign_copy',cta_type=['demo_interest','diagnostic_question','public_demo_form','close_loop'][i]) for i,b in enumerate(bodies)]
+ return [dict(step=i+1,day_offset=cfg['sequence_business_day_offsets'][i],subject=subjects[i],body=b,evidence=evid,core_value_proposition=feature['scenario'],message_kind='proposed_shippypro_campaign_copy',cta_type=['demo_interest','diagnostic_question','public_demo_form','close_loop'][i],committee_role=role['role']) for i,b in enumerate(bodies)]
 
 def qa_message(m):
  issues=[];words=len(m['body'].split())
@@ -110,6 +114,7 @@ def build(db=DB):
  cfg=read(CFG)
  if cfg['mode']!='ghost_audit' or cfg['sending_enabled'] or cfg['transport']!='none':raise ValueError('This engine is scoped to an independent ghost audit; no sending transport exists')
  rs=read(ROOT/cfg['primary_source']);aa=angles();OUT.mkdir(exist_ok=True,parents=True)
+ hooks_path=ROOT/'config/outbound/linkedin_hooks.json';hooks=read(hooks_path) if hooks_path.exists() else {}
  if len(rs)!=50 or len({r['domain'] for r in rs})!=50:raise ValueError('Expected the 50 distinct selected accounts')
  c=connect(db);init(c);quality=[]
  with c:
@@ -128,8 +133,20 @@ def build(db=DB):
      c.execute('INSERT INTO messages(id,contact_id,step,day_offset,subject,body,evidence_json,content_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(mid,cid,m['step'],m['day_offset'],m['subject'],m['body'],json.dumps(m['evidence']),h,t,t));event(c,cid,'draft_created',{'step':m['step'],'content_hash':h},mid,eid='draft-'+mid)
     elif not prior['edited'] and prior['content_hash']!=h:
      c.execute("UPDATE messages SET subject=?,body=?,evidence_json=?,content_hash=?,review_status='draft',revision=revision+1,updated_at=? WHERE id=?",(m['subject'],m['body'],json.dumps(m['evidence']),h,t,mid));event(c,cid,'draft_regenerated',{'old_hash':prior['content_hash'],'new_hash':h},mid);changed=True
+   if hooks:
+    proposed=linkedin_copy.drafts(cid,r,a,hooks.get(r['domain']),FEATURES[a['feature']],cfg['official_demo_url'])
+    for m in proposed:
+     issues=qa_message(m);quality.append(dict(contact_id=cid,company=r['company'],channel='linkedin',step=m['step'],word_count=len(m['body'].split()),character_count=len(m['body']),issues=issues))
+    linkedin,li_changed=linkedin_copy.merge(json.loads(old['linkedin_json']) if old else [],proposed)
+    c.execute('UPDATE contacts SET linkedin_json=? WHERE id=?',(json.dumps(linkedin),cid))
+    if li_changed:
+     c.execute("UPDATE contacts SET review_status='unreviewed' WHERE id=?",(cid,))
+     event(c,cid,'linkedin_drafts_generated',{'channel':'linkedin','content_hashes':[m['content_hash'] for m in linkedin]},eid='linkedin-'+cid+'-'+stable(json.dumps([m['content_hash'] for m in linkedin])))
    if changed or (old and old['research_json']!=json.dumps(rr)):
     c.execute("UPDATE contacts SET review_status='unreviewed' WHERE id=?",(cid,));c.execute("UPDATE messages SET review_status='draft' WHERE contact_id=?",(cid,))
+    linked=json.loads(c.execute('SELECT linkedin_json FROM contacts WHERE id=?',(cid,)).fetchone()[0])
+    for m in linked:m['review_status']='draft'
+    c.execute('UPDATE contacts SET linkedin_json=? WHERE id=?',(json.dumps(linked),cid))
   (OUT/'copy_qa.json').write_text(json.dumps(quality,indent=2))
   if any(x['issues'] for x in quality):raise ValueError('Copy QA failed; inspect copy_qa.json')
  c.close();data=export(db);print(json.dumps(data['summary'],indent=2));return data
@@ -137,14 +154,16 @@ def build(db=DB):
 def state(db=DB):
  c=connect(db);init(c);contacts=[]
  for row in c.execute('SELECT * FROM contacts ORDER BY rank'):
-  r=dict(row);r['research']=json.loads(r.pop('research_json'));r['messages']=[]
+  r=dict(row);r['research']=json.loads(r.pop('research_json'));r['linkedin_messages']=json.loads(r.pop('linkedin_json'));r['messages']=[]
   for m in c.execute('SELECT * FROM messages WHERE contact_id=? ORDER BY step',(r['id'],)):
    mm=dict(m);mm['evidence']=json.loads(mm.pop('evidence_json'));r['messages'].append(mm)
   r['timeline']=[dict(id=e['id'],type=e['type'],created_at=e['created_at'],payload=json.loads(e['payload_json'])) for e in c.execute('SELECT * FROM events WHERE contact_id=? ORDER BY created_at,id',(r['id'],))]
-  r['engagement_status']='not_contacted';contacts.append(r)
+  r['committee']=buying_committee.describe(r['title']);r['engagement_status']='not_contacted';contacts.append(r)
  counts=dict(c.execute('SELECT type,count(*) FROM events GROUP BY type').fetchall());c.close()
  summary={'contacts':len(contacts),'research_attempted':len(contacts),'public_business_context_found':sum(x['research']['research_status']=='public_business_context_found' for x in contacts),'draft_messages':sum(len(x['messages']) for x in contacts),'reviewed_contacts':sum(x['review_status']=='reviewed' for x in contacts),'work_emails':sum(bool(x['email']) for x in contacts),'missing_emails':sum(not x['email'] for x in contacts),'contacts_with_review_flags':sum(bool(x['research']['review_flags']) for x in contacts),'sent':0,'replies':0,'demos_booked':0,'mode':'ghost_audit','sending_enabled':False,'scheduled_messages':0,'transport':'none'}
- return dict(campaign=read(CFG),summary=summary,contacts=contacts,event_counts=counts)
+ summary['linkedin_draft_messages']=sum(len(x['linkedin_messages']) for x in contacts)
+ committee=buying_committee.coverage(contacts);committee['roles']=buying_committee.ROLES
+ return dict(campaign=read(CFG),summary=summary,contacts=contacts,event_counts=counts,committee=committee)
 
 def writecsv(path,rows,fields):
  with path.open('w',newline='') as f:w=csv.DictWriter(f,fieldnames=fields,extrasaction='ignore');w.writeheader();w.writerows(rows)
@@ -159,6 +178,11 @@ def export(db=DB):
    long.append(dict(contact_id=r['id'],company=r['company'],contact_name=r['name'],work_email=r['email'],message_id=m['id'],step=m['step'],proposed_business_day_offset=m['day_offset'],subject=m['subject'],body=m['body'],review_status=m['review_status'],revision=m['revision'],source_urls=' | '.join(m['evidence']),sent_at='',provider_message_id='',mode='ghost_audit'))
   flat.append(row)
  writecsv(OUT/'campaign_contacts_50.csv',flat,list(flat[0]));writecsv(OUT/'campaign_messages_200.csv',long,list(long[0]))
+ linkedin=[]
+ for person in data['contacts']:
+  for m in person['linkedin_messages']:
+   linkedin.append(dict(contact_id=person['id'],company=person['company'],contact_name=person['name'],linkedin_profile=person['linkedin'],message_id=m['id'],step=m['step'],message_type=m['subject'],timing=m['timing'],body=m['body'],characters=len(m['body'].encode('utf-16-le'))//2,words=len(m['body'].split()),review_status=m['review_status'],revision=m['revision'],evidence=' | '.join(m['evidence']),research_flags=' | '.join(person['research']['review_flags']),mode='ghost_audit'))
+ writecsv(OUT/'linkedin_messages_200.csv',linkedin,list(linkedin[0]) if linkedin else ['contact_id','body'])
  (OUT/'campaign.json').write_text(json.dumps(data,ensure_ascii=False,indent=2));(OUT/'summary.json').write_text(json.dumps(data['summary'],indent=2))
  research_rows=[dict(contact_id=x['id'],company=x['company'],person=x['name'],**x['research']) for x in data['contacts']];(OUT/'research_50.json').write_text(json.dumps(research_rows,ensure_ascii=False,indent=2))
  render(data)
@@ -168,39 +192,51 @@ def export(db=DB):
  return data
 
 def update(db,op,export_outputs=True):
- if op.get('action') not in {'review','edit_message','note'}:raise ValueError('Only audit review, draft edits and notes are supported; no send or engagement simulation')
- c=connect(db);init(c);cid=op.get('contact_id','')
- if not c.execute('SELECT 1 FROM contacts WHERE id=?',(cid,)).fetchone():raise ValueError('Unknown contact')
- request_id=op.get('event_id');request_hash=stable(json.dumps({k:v for k,v in op.items() if k!='event_id'},sort_keys=True))
- if request_id:
-  previous=c.execute('SELECT operation_hash FROM requests WHERE id=?',(request_id,)).fetchone()
-  if previous:
-   c.close()
-   if previous['operation_hash']!=request_hash:raise ValueError('Request ID belongs to a different operation')
-   return state(db)
- with c:
-  if op['action']=='review':
-   status=op.get('status')
-   if status not in {'reviewed','needs_revision','unreviewed'}:raise ValueError('Invalid review status')
-   c.execute('UPDATE contacts SET review_status=?,updated_at=? WHERE id=?',(status,now(),cid));c.execute('UPDATE messages SET review_status=?,updated_at=? WHERE contact_id=?',('reviewed' if status=='reviewed' else 'draft',now(),cid));event(c,cid,'audit_review_changed',{'status':status},eid=op.get('event_id'))
-  elif op['action']=='note':
-   note=op.get('note','')
-   if not isinstance(note,str) or len(note)>6000:raise ValueError('Invalid note')
-   c.execute('UPDATE contacts SET note=?,updated_at=? WHERE id=?',(note,now(),cid));event(c,cid,'audit_note_updated',{'note':note},eid=op.get('event_id'))
-  else:
-   m=c.execute('SELECT * FROM messages WHERE id=? AND contact_id=?',(op.get('message_id'),cid)).fetchone()
-   if not m:raise ValueError('Unknown message for contact')
-   if op.get('revision')!=m['revision']:raise ValueError('Draft changed since it was opened; refresh before saving')
-   sub=op.get('subject','').strip();body=op.get('body','').strip()
-   if not sub or not body or len(sub)>180 or len(body)>6000:raise ValueError('Invalid draft length')
-   if '\n' in sub or '\r' in sub:raise ValueError('Subject cannot contain newlines')
-   h=stable(sub+'\n'+body);c.execute("UPDATE messages SET subject=?,body=?,content_hash=?,review_status='draft',edited=1,revision=revision+1,updated_at=? WHERE id=?",(sub,body,h,now(),m['id']));c.execute("UPDATE contacts SET review_status='unreviewed',updated_at=? WHERE id=?",(now(),cid));event(c,cid,'draft_edited',{'old_hash':m['content_hash'],'new_hash':h,'revision':m['revision']+1},m['id'],op.get('event_id'))
+ if op.get('action') not in {'review','edit_message','edit_linkedin','note'}:raise ValueError('Only audit review, draft edits and notes are supported; no send or engagement simulation')
+ c=connect(db)
+ try:
+  init(c);cid=op.get('contact_id','')
+  if not c.execute('SELECT 1 FROM contacts WHERE id=?',(cid,)).fetchone():raise ValueError('Unknown contact')
+  request_id=op.get('event_id');request_hash=stable(json.dumps({k:v for k,v in op.items() if k!='event_id'},sort_keys=True))
+  if request_id:
+   previous=c.execute('SELECT operation_hash FROM requests WHERE id=?',(request_id,)).fetchone()
+   if previous:
+    c.close()
+    if previous['operation_hash']!=request_hash:raise ValueError('Request ID belongs to a different operation')
+    return state(db)
+  with c:
+   if op['action']=='review':
+    status=op.get('status')
+    if status not in {'reviewed','needs_revision','unreviewed'}:raise ValueError('Invalid review status')
+    c.execute('UPDATE contacts SET review_status=?,updated_at=? WHERE id=?',(status,now(),cid));c.execute('UPDATE messages SET review_status=?,updated_at=? WHERE contact_id=?',('reviewed' if status=='reviewed' else 'draft',now(),cid));event(c,cid,'audit_review_changed',{'status':status},eid=op.get('event_id'))
+    linkedin=json.loads(c.execute('SELECT linkedin_json FROM contacts WHERE id=?',(cid,)).fetchone()[0])
+    for m in linkedin:m['review_status']='reviewed' if status=='reviewed' else 'draft'
+    c.execute('UPDATE contacts SET linkedin_json=? WHERE id=?',(json.dumps(linkedin),cid))
+   elif op['action']=='note':
+    note=op.get('note','')
+    if not isinstance(note,str) or len(note)>6000:raise ValueError('Invalid note')
+    c.execute('UPDATE contacts SET note=?,updated_at=? WHERE id=?',(note,now(),cid));event(c,cid,'audit_note_updated',{'note':note},eid=op.get('event_id'))
+   elif op['action']=='edit_linkedin':
+    before=json.loads(c.execute('SELECT linkedin_json FROM contacts WHERE id=?',(cid,)).fetchone()[0])
+    after=linkedin_copy.edit(before,op.get('message_id'),op.get('revision'),op.get('body',''))
+    c.execute("UPDATE contacts SET linkedin_json=?,review_status='unreviewed',updated_at=? WHERE id=?",(json.dumps(after),now(),cid))
+    event(c,cid,'linkedin_draft_edited',{'channel':'linkedin','message_id':op['message_id'],'previous':next(m for m in before if m['id']==op['message_id']),'revision':op['revision']+1},eid=op.get('event_id'))
+   else:
+    m=c.execute('SELECT * FROM messages WHERE id=? AND contact_id=?',(op.get('message_id'),cid)).fetchone()
+    if not m:raise ValueError('Unknown message for contact')
+    if op.get('revision')!=m['revision']:raise ValueError('Draft changed since it was opened; refresh before saving')
+    sub=op.get('subject','').strip();body=op.get('body','').strip()
+    if not sub or not body or len(sub)>180 or len(body)>6000:raise ValueError('Invalid draft length')
+    if '\n' in sub or '\r' in sub:raise ValueError('Subject cannot contain newlines')
+    h=stable(sub+'\n'+body);c.execute("UPDATE messages SET subject=?,body=?,content_hash=?,review_status='draft',edited=1,revision=revision+1,updated_at=? WHERE id=?",(sub,body,h,now(),m['id']));c.execute("UPDATE contacts SET review_status='unreviewed',updated_at=? WHERE id=?",(now(),cid));event(c,cid,'draft_edited',{'old_hash':m['content_hash'],'new_hash':h,'revision':m['revision']+1},m['id'],op.get('event_id'))
    if request_id:c.execute('INSERT INTO requests VALUES(?,?,?)',(request_id,request_hash,now()))
- c.close();return export(db) if export_outputs else state(db)
+  c.close();return export(db) if export_outputs else state(db)
+ finally:c.close()
 
-def render(data):
+def html_page(data):
  template=(ROOT/'src/outbound_dashboard.html').read_text();safe=json.dumps(data,ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
- (OUT/'campaign.html').write_text(template.replace('__CAMPAIGN_DATA__',safe))
+ return template.replace('__CAMPAIGN_DATA__',safe)
+def render(data):(OUT/'campaign.html').write_text(html_page(data))
 
 
 def apply_backup(path,db=DB):
@@ -224,6 +260,12 @@ def apply_backup(path,db=DB):
     before=c.execute('SELECT * FROM messages WHERE id=? AND contact_id=?',(mid,cid)).fetchone()
     if not before or before['content_hash']!=m.get('base_hash'):c.close();raise ValueError('Draft conflict: review against the current campaign before importing')
     update(staged,dict(action='edit_message',contact_id=cid,message_id=mid,revision=before['revision'],subject=m.get('subject',''),body=m.get('body',''),event_id=key+'-'+mid),export_outputs=False)
+   linkedin=changes.get('linkedin_messages',{})
+   if not isinstance(linkedin,dict) or len(linkedin)>4:c.close();raise ValueError('Invalid LinkedIn backup messages')
+   for mid,m in linkedin.items():
+    current_li=json.loads(c.execute('SELECT linkedin_json FROM contacts WHERE id=?',(cid,)).fetchone()[0]);before=next((x for x in current_li if x['id']==mid),None)
+    if not before or before['content_hash']!=m.get('base_hash'):c.close();raise ValueError('LinkedIn draft conflict; no partial backup import')
+    update(staged,dict(action='edit_linkedin',contact_id=cid,message_id=mid,revision=before['revision'],body=m.get('body',''),event_id=key+'-li-'+mid),export_outputs=False)
    c.close()
    if 'note' in changes:update(staged,dict(action='note',contact_id=cid,note=changes['note'],event_id=key+'-note-'+cid),export_outputs=False)
    if 'review_status' in changes:update(staged,dict(action='review',contact_id=cid,status=changes['review_status'],event_id=key+'-review-'+cid),export_outputs=False)
@@ -237,30 +279,32 @@ def resolve_contact(value,db=DB):
  if len(rows)!=1:raise ValueError('Supply one exact contact ID, domain or name')
  return rows[0]['id']
 
-def serve(port,db=DB):
+FILES={'campaign_contacts_50.csv','campaign_messages_200.csv','linkedin_messages_200.csv','research_50.json','summary.json'}
+def serve(port,db=DB,load=None,page=None,exports=True,label='ShippyPro review'):
+ """Local-only review server: 127.0.0.1, host and origin checks, no send endpoint."""
+ load=load or (lambda:state(db));page=page or html_page;hosts={f'127.0.0.1:{port}',f'localhost:{port}'}
  class Handler(BaseHTTPRequestHandler):
   def send(self,code,body,kind='application/json'):
    raw=body.encode();self.send_response(code);self.send_header('Content-Type',kind+'; charset=utf-8');self.send_header('Content-Length',str(len(raw)));self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(raw)
   def do_GET(self):
-   if self.headers.get('Host') not in {f'127.0.0.1:{port}',f'localhost:{port}'}:return self.send(403,'{"error":"Invalid host"}')
-   if self.path=='/api/campaign':return self.send(200,json.dumps(state(db),ensure_ascii=False))
-   name=self.path.split('?',1)[0].lstrip('/') or 'campaign.html'
-   if name not in {'campaign.html','campaign_contacts_50.csv','campaign_messages_200.csv','research_50.json','summary.json'}:return self.send(404,'{"error":"Not found"}')
-   path=OUT/name
-   if not path.exists():return self.send(404,'{"error":"Build the campaign first"}')
-   self.send(200,path.read_text(),'text/html' if name.endswith('.html') else 'text/csv' if name.endswith('.csv') else 'application/json')
+   if self.headers.get('Host') not in hosts:return self.send(403,'{"error":"Invalid host"}')
+   name=self.path.split('?',1)[0].lstrip('/')
+   if name in {'','campaign.html'}:return self.send(200,page(load()),'text/html')
+   if name=='api/campaign':return self.send(200,json.dumps(load(),ensure_ascii=False))
+   if not exports or name not in FILES or not (OUT/name).exists():return self.send(404,'{"error":"Not found"}')
+   self.send(200,(OUT/name).read_text(),'text/csv' if name.endswith('.csv') else 'application/json')
   def do_POST(self):
-   origin=self.headers.get('Origin');host=self.headers.get('Host')
-   if host not in {f'127.0.0.1:{port}',f'localhost:{port}'}:return self.send(403,'{"error":"Invalid host"}')
-   if origin and origin not in {'http://'+host}:return self.send(403,'{"error":"Cross-origin writes are not allowed"}')
+   host,origin=self.headers.get('Host'),self.headers.get('Origin')
+   if host not in hosts or (origin and origin!='http://'+host):return self.send(403,'{"error":"Cross-origin writes are not allowed"}')
    if self.path!='/api/update' or self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.send(400,'{"error":"Expected an audit update as JSON"}')
    try:
     n=int(self.headers.get('Content-Length','0'))
     if n<1 or n>32000:raise ValueError('Invalid request size')
-    op=json.loads(self.rfile.read(n));data=update(db,op);self.send(200,json.dumps(data,ensure_ascii=False))
+    # exports=False keeps demo edits out of the real results/outbound_v1 files.
+    update(db,json.loads(self.rfile.read(n)),exports);self.send(200,json.dumps(load(),ensure_ascii=False))
    except (ValueError,AssertionError,KeyError,json.JSONDecodeError) as e:self.send(400,json.dumps({'error':str(e)}))
   def log_message(self,*args):pass
- print(f'Ghost-audit tracker: http://127.0.0.1:{port} (no sending transport)',flush=True);ThreadingHTTPServer(('127.0.0.1',port),Handler).serve_forever()
+ print(f'{label}: http://127.0.0.1:{port} (local only; nothing can be sent)',flush=True);ThreadingHTTPServer(('127.0.0.1',port),Handler).serve_forever()
 
 def main():
  p=argparse.ArgumentParser(description='ShippyPro independent audit: research, drafts and review; no sending')
@@ -268,10 +312,13 @@ def main():
  p.add_argument('--db',default=str(DB));p.add_argument('--contact');p.add_argument('--status');p.add_argument('--text')
  p.add_argument('--message');p.add_argument('--subject');p.add_argument('--body');p.add_argument('--revision',type=int)
  p.add_argument('--file');p.add_argument('--port',type=int,default=8765)
+ p.add_argument('--demo',action='store_true',help='serve: run on the synthetic sample_data/ accounts, no login')
  args=p.parse_args()
  try:
   if args.command=='build':build(args.db)
   elif args.command=='summary':print(json.dumps(state(args.db)['summary'],indent=2))
+  elif args.command=='serve' and args.demo:
+   import demo;demo.serve(args.port)
   elif args.command=='serve':serve(args.port,args.db)
   elif args.command=='import-review':
    if not args.file:p.error('import-review requires --file')

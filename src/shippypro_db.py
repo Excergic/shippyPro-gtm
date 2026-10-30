@@ -51,7 +51,8 @@ def sync(campaign=None, db=DB, source=None):
             'enrichment_data_json': json.dumps({'research': tracker.get('research', {}),
                 'email_status': row.get('email_status'), 'email_receipt': row.get('email_receipt'),
                 'contact_receipt': row.get('contact_receipt'), 'review_status': tracker.get('review_status', 'unreviewed'),
-                'note': tracker.get('note', ''), 'provenance': 'Saved ShippyPro source receipts; not a fresh live lookup'}),
+                'note': tracker.get('note', ''), 'linkedin_messages': tracker.get('linkedin_messages', []),
+                'provenance': 'Saved ShippyPro source receipts; not a fresh live lookup'}),
             'messages_json': json.dumps(tracker.get('messages', [])), 'last_verified_at': None,
             'refresh_due_at': datetime.now(timezone.utc).isoformat(), 'status': 'needs_refresh'})
     # A company dropping out of the shortlist must not retain a stale usable row.

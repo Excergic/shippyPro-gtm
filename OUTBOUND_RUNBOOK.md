@@ -1,5 +1,7 @@
 # ShippyPro independent campaign audit
 
+The workbench now opens in **LinkedIn** mode, with one event-based connection note and three suggested follow-ups per contact. Switch to **Email** to view the preserved email drafts. LinkedIn notes are capped at 200 characters, and each default four-message sequence is under 300 words in total. Copy sends only the message body; follow-ups are suggestions after acceptance and no reply, not scheduled sends. [Download LinkedIn drafts](results/outbound_v1/linkedin_messages_200.csv). Edits and portable review backups support both channels without replacing email copy.
+
 This is an independent ghost audit using real prospect records and public business information. It is proposed ShippyPro campaign copy, not ShippyPro's actual campaign or an authorised sales effort. No mailbox, sender identity, external sequence, tracking pixel, live booking attribution or message transport is connected. Nothing has been sent. The system does not claim access to ShippyPro's internal CRM, sales workflow or conversion data.
 
 ## Open and use the campaign
